@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>360° Image & Ambisonic Audio</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://rawcdn.githack.com/GoogleChrome/omnitone/master/build/omnitone.min.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        canvas { display: block; }
+        #playButton {
+            position: absolute;
+            top: 10px; left: 10px;
+            padding: 10px 20px; background: white; border: none;
+            cursor: pointer; font-size: 16px;
+        }
+    </style>
+</head>
+<body>
+    <button id="playButton">Play Ambisonic Audio</button>
+    <script>
+        let audioContext, decoder, source;
+        let scene, camera, renderer, sphere;
+        let isPlaying = false;
+
+        // Initialize Three.js scene
+        function initThreeJS() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            const texture = new THREE.TextureLoader().load('your-360-image.jpg'); // Replace with actual 360 image
+            sphere = new THREE.Mesh(
+                new THREE.SphereGeometry(500, 60, 40),
+                new THREE.MeshBasicMaterial({ map: texture, side: THREE.BackSide })
+            );
+            scene.add(sphere);
+            camera.position.set(0, 0, 0);
+            animate();
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            renderer.render(scene, camera);
+        }
+
+        // Initialize Ambisonic Audio
+        async function initAudio() {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            decoder = await Omnitone.createFOADecoder(audioContext);
+            decoder.initialize();
+            loadAndPlayAmbisonic();
+        }
+
+        function loadAndPlayAmbisonic() {
+            fetch("your-ambisonic-file.ogg") // Replace with actual Ambisonic file
+                .then(response => response.arrayBuffer())
+                .then(data => audioContext.decodeAudioData(data))
+                .then(buffer => {
+                    if (source) source.stop();
+                    source = audioContext.createBufferSource();
+                    source.buffer = buffer;
+                    source.loop = true;
+                    source.connect(decoder.input);
+                    decoder.output.connect(audioContext.destination);
+                    source.start();
+                    isPlaying = true;
+                })
+                .catch(error => console.error("Error loading audio:", error));
+        }
+
+        // Head Tracking (Device Orientation API)
+        window.addEventListener("deviceorientation", (event) => {
+            if (isPlaying && decoder) {
+                let yaw = event.alpha ? event.alpha * (Math.PI / 180) : 0;
+                let pitch = event.beta ? event.beta * (Math.PI / 180) : 0;
+                let roll = event.gamma ? event.gamma * (Math.PI / 180) : 0;
+
+                decoder.setRotation(yaw, pitch, roll);
+                camera.rotation.set(pitch, yaw, roll); // Sync camera with audio rotation
+            }
+        }, true);
+
+        // Start the experience on button click
+        document.getElementById("playButton").addEventListener("click", () => {
+            if (!audioContext) {
+                initAudio();
+                initThreeJS();
+            }
+        });
+
+        window.addEventListener("resize", () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
